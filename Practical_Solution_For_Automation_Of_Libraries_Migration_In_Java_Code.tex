@@ -1,0 +1,144 @@
+\documentclass[sigplan,screen,11pt]{acmart}
+\settopmatter{printacmref=false} % Removes citation information below abstract
+\renewcommand\footnotetextcopyrightpermission[1]{} % removes footnote with conference information in first column
+\pagestyle{plain} % removes running headers
+\acmConference{}{}{}
+\usepackage[utf8]{inputenc}
+\usepackage{indentfirst}
+\usepackage[english]{babel}
+\usepackage{listings}
+\usepackage{minted}
+\usemintedstyle{borland}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{array}
+\hypersetup{
+    colorlinks=true, % make the links colored
+    linkcolor=blue, % color TOC links in blue
+    urlcolor=blue, % color URLs in red
+    linktoc=all % 'all' will create links for everything in the TOC
+}
+
+\title{Practical Solution For Automation Of Libraries Migration In Java Code}
+\author{Guseyn Ismayylov}
+\date{7th December 2020}
+
+\begin{document}
+\maketitle
+
+\section{Abstract}
+
+Migration of libraries and other transformations in the code is a huge percentage of work that every programmer does most of the time. And in the big companies the size of legacy reaches unimaginable numbers. This is why problem of automation such work is so tempting.
+
+In this report we will discuss two possible solutions that can be practically implemented to solve the problem: 
+\begin{itemize}
+  \item Mining migration patterns from open sources of existing code
+  \item Creating manually specific migration scenarios from initially convenient structures that can be used in there.
+\end{itemize}
+
+Also we are going to make a conclusion (as a result of research of the current problem) about why second approach is more efficient in terms of practical implementation and application.
+
+\section{Problem}
+
+Let's say we have a Java program with \textbf{.pom} file as configuration file with dependencies and we use functionality from those dependencies in our program. Now, we need to update such dependencies and update them to specified versions or even to other libraries automatically. And of course, we also need to update Java code correspondingly and it must compile.
+
+So, on input we've got
+\begin{itemize}
+  \item Folder with Java code
+  \item \textbf{.pom} file with dependencies
+  \item Specified library/libraries where we want to migrate from
+  \item Specified library/libraries where we want to migrate to
+\end{itemize}
+
+And as output we need to get:
+
+\begin{itemize}
+    \item Updated \textbf{.pom} file with dependencies
+    \item Updated valid Java code in the original folder
+\end{itemize}
+
+\section{Related works}
+
+\subsection{MigrationMiner: Mining patterns from open source}
+
+First solution that was found is \textbf{Migration Miner} by user \textbf{@hussien89aa} on GitHub. The idea is that we generate migration patterns from open source by list of links of repositories in GitHub that can potentially contain migrations. The list is stored in \textbf{.csv} file.
+
+The logic of how this project works can be explained in following steps:
+
+\begin{enumerate}
+    \item We collect diffs from git commits from the list with git repositories.
+    \item We parse different versions of dependencies in \textbf{.pom} file.
+    \item We create structures that describe java changes in each commit.
+    \item We iterate over java changes using new java imports in corresponding java files and using pom.xml file (to get version of libraries) to generate migration rules. In each iteration we check types and import + if needed new changes in dependencies of pom.xml versions (for each commit).
+    \item We apply criteria for Migration Rule(it can be describe as a pair of libraries before and after that are included in migration scenario): if we have new java imports in file and in changed lines of java code with complete statements where we remove all types of classes or scopes from one library and add types from another library (which we can get in new imports(or jdk) and pom.xml) we can 100\% be sure that it’s some migration rule. Also we can reduce expectations for the criteria and hope we can get good migration rules. But we do it if the criteria is failed to give big number of rules.
+    \item We build structures of migration rules. While we are getting migration rules, we can get name of classes and/or methods around core variables in migrations. For increasing efficiency we also need to load source code of libs from maven central or other repositories.
+    \item We get migration segments from code that are attached to migration rules that we found. Migration segments are consist of Java statements, which are parsed java structures so they can be applied on existing code base.
+    \item We build migration patterns for migration segments that can be applied for real code.
+\end{enumerate}
+
+More detailed explanation you can find in \href{https://docs.google.com/presentation/d/1ZeTIZW5zE6Li-s0tz_Dmfy-o4L_mSgZ7CkDBrQy7j34/edit?usp=sharing}{this presentation}.\newline
+
+I can list following found issues with this found library:
+
+\begin{itemize}
+  \item Solution is not complete for all the problems: generating patterns, storing and also applying them on existing code.
+  \item A lot of custom solution for common problems: working with network, GitHub, file system, parsing Java. And these solution are not stable and full of bugs. Instead we should use well proven solutions.
+  \item Using MySQL(where all structures are stored) is forced, which is not flexible. Also there is no convenient API for data storage.
+  \item Algorithms are slow and complex. For example, we need to do processing for all libraries, instead of moving from one library to another one.
+\end{itemize}
+
+\subsection{Rewrite: Creating manually specific migration scenarios from initially convenient structures that can be used in there.}
+
+Another solution with completely different approach is \href{https://docs.openrewrite.org/}{Rewrite project}.
+
+The idea is that we create so called recipes in Java or Yaml format that consistent of visitors that apply changes (that we declare there) to specified java file/or folder with java files.
+
+Detailed explanation of how Rewrite works you can find in the docs on Rewrite site above and in \href{https://docs.google.com/presentation/d/1oJFSzZM37UMEZBLZNngLvk45z-yMvcCjiZojCQzdYx0/edit#slide=id.p}{this presentation}.
+In few words, logic can be describe in following steps:
+
+\begin{enumerate}
+    \item We create Java visitors for java code transformations.
+    \item We can use visitors in refactor processor like in \href{https://docs.google.com/presentation/d/1oJFSzZM37UMEZBLZNngLvk45z-yMvcCjiZojCQzdYx0/edit#slide=id.p}{this example project}.
+    \item We can create \textbf{.yml} definitions out of such visitors and use maven/gradle plugin to apply them on specified folder with code.
+\end{enumerate}
+
+Considering the progress that the core team of Rewrite project has made and still making, it's decided to support them by creating example solutions that based on Rewrite, filing bugs and submitting feature requests instead of creating another solution.
+
+\section{Solution}
+
+Following first approach project \href{https://github.com/guseyn/Mea}{Mea} was created. But quite soon I realized disadvantages of mining patters:
+
+\begin{itemize}
+  \item Difficult to get commits from open source that can be applicable for migration scenarios.
+  \item Found applicable patterns are not complete and don’t guarantee complete migration from lib “A” to lib “B” for all cases, all methods and so on.
+  \item It’s difficult to predict what kind of changes user wants to apply: either it’s just migration or some smart replacement of code which can be hardly to achieve just by using regular expressions. In another words, user might have very specific path and approach for migration which most probably would not be covered from mining structures.
+  \item There is no common approach for creating missing patterns, we just cannot force user to find some commits and it’s better to provide an end user with some instruction on how to create such patterns just by typing examples of migrations.
+\end{itemize}
+
+This is why I decided to stop working on \textbf{Mea} and support \textbf{Rewrite} by submitting feature requests, filing bugs and  creating following own projects: \href{https://github.com/guseyn/rewrite-junit4-to-junit5}{Rewrite JUnit-4 To JUnit-5}, \href{https://github.com/Guseyn/rewrite-java-definitions}{Rewrite Java Definitions}. All these projects are based on usage of visitors from Rewrite Project(and some additional that I created).
+
+\section{Deliverables}
+
+\begin{center}
+\begin{tabular}{ | m{5em} | m{5em}| m{5em} | m{10em} | } 
+\hline
+Project & Lines of code & Time spent & Contributors \\ 
+\hline
+\href{https://github.com/guseyn/mea}{Mea} & 7565 & 40 days & @guseyn(GitHub) \\
+\hline
+\href{https://github.com/Guseyn/Migrator}{Migrator} & 4216 & 50 days & @guseyn(GitHub) \\
+\hline
+\href{https://github.com/guseyn/rewrite-junit4-to-junit5}{Rewrite JUnit-4 To JUnit-5} & 2010 & 60 days & @guseyn(GitHub) \\
+\hline
+\href{https://github.com/guseyn/rewrite-junit4-to-junit5}{Rewrite JUnit-4 To JUnit-5} & 6356 & 40 days & @guseyn(GitHub) \\
+\hline
+
+\end{tabular}
+\end{center}
+
+\section{Conclusion}
+
+I've done really huge research of the problem, found and created many interesting ideas and projects. I realized that mining patterns is useless activity in practical sense, this is why I help and support Rewrite project, because the approach that's been used there gives real practical results like this \href{https://github.com/openrewrite/rewrite-testing-frameworks/tree/master/src}{tool}. I created example project that can help newcomers to understand how to use Java definitions. It helps open source community and Rewrite project itself because by creating such example projects I found many bugs in real practical cases. By this, I improve Rewrite project and motivate core team to work on the project and this helps us to solve this quite complex and ambitious problem.
+
+\end{document}
